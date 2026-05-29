@@ -1,10 +1,19 @@
 # tiny11-core-posix
 
-**A POSIX/Linux port of the [tiny11builder](https://github.com/ntdevlabs/tiny11builder) *Core* script — build an ultra-minimal Windows 11 ISO without Windows, DISM, or Wine.**
+**A POSIX/Linux port of [tiny11builder](https://github.com/ntdevlabs/tiny11builder) — build a trimmed-down Windows 11 ISO without Windows, DISM, or Wine.**
 
-The upstream [`tiny11Coremaker.ps1`](https://github.com/ntdevlabs/tiny11builder) is a PowerShell script that only runs on Windows because it relies on Windows-only tooling (DISM, `reg.exe`, `takeown`/`icacls`, `oscdimg.exe`). This project reproduces its behaviour using standard Linux tools, so you can produce a stripped-down Windows 11 install ISO straight from a Linux box — ideal for spinning up lightweight, disposable **Proxmox / KVM / VirtualBox** VM templates.
+The upstream scripts (`tiny11maker.ps1` and `tiny11Coremaker.ps1`) are PowerShell and only run on Windows because they rely on Windows-only tooling (DISM, `reg.exe`, `takeown`/`icacls`, `oscdimg.exe`). This project reproduces their behaviour using standard Linux tools, so you can produce a stripped-down Windows 11 install ISO straight from a Linux box — ideal for lightweight **Proxmox / KVM / VirtualBox** VMs.
 
-> ⚠️ **This builds the *Core* image, which is NOT serviceable.** You cannot install updates, languages, or features afterwards. It is meant for throwaway test/dev VMs and golden templates you rebuild periodically — not as a long-lived, internet-facing daily driver. This mirrors the upstream Core script's design.
+It ships **both** builders:
+
+| Script | Based on | Result | Serviceable? | Use for |
+|---|---|---|---|---|
+| **`tiny11maker.sh`** | `tiny11maker.ps1` | Debloated but normal Windows 11 | ✅ Yes — keeps Windows Update, Defender, WinRE, component store | A lean daily-driver / long-lived VM you still want to patch |
+| **`tiny11coremaker.sh`** | `tiny11Coremaker.ps1` | Ultra-minimal (gutted WinSxS, no Update/Defender/WinRE) | ❌ No — cannot add updates/features/languages | Disposable test/dev VMs and golden templates you rebuild |
+
+> ⚠️ **The Core image is NOT serviceable** (same as upstream Core). Pick `tiny11maker.sh` unless you specifically want the smallest possible throwaway image.
+
+Both scripts share their logic via [`lib/tiny11-common.sh`](lib/tiny11-common.sh); each top-level script just defines its package list, registry tweaks, and which extra steps run.
 
 ---
 
@@ -15,7 +24,7 @@ This is an independent reimplementation. **All credit for the original design �
 - Original repo: <https://github.com/ntdevlabs/tiny11builder>
 - Support NTDEV: [Patreon](http://patreon.com/ntdev) · [PayPal](http://paypal.me/ntdev2) · [Ko-fi](http://ko-fi.com/ntdev)
 
-If you want a Windows-native, *serviceable* build (the regular `tiny11maker.ps1`), or the official Core script, use the upstream project on Windows.
+For a Windows-native build, or anything not covered here, use the upstream project on Windows.
 
 ---
 
@@ -60,19 +69,22 @@ sudo apt install wimtools libwin-hivex-perl libhivex-bin p7zip-full xorriso
 ```bash
 git clone https://github.com/<your-user>/tiny11-core-posix.git
 cd tiny11-core-posix
-chmod +x tiny11coremaker.sh
 
+# Serviceable, debloated build (recommended for most uses):
+./tiny11maker.sh --iso /path/to/Win11_24H2_English_x64.iso
+
+# Ultra-minimal, non-serviceable build (disposable VMs / templates):
 ./tiny11coremaker.sh --iso /path/to/Win11_24H2_English_x64.iso
 ```
 
-It will ask you to pick an edition **index** (e.g. Pro, Home), then build `tiny11core.iso` in the current directory.
+Each script asks you to pick an edition **index** (e.g. Pro, Home), then builds the output ISO in the current directory (`tiny11.iso` / `tiny11core.iso`).
 
-### Options
+### Options (identical for both scripts)
 
 ```
 --iso PATH        Source Windows 11 ISO (required)
 --scratch DIR     Working directory (default: a fresh mktemp dir; needs ~15-20 GB)
---output FILE     Output ISO path (default: ./tiny11core.iso)
+--output FILE     Output ISO path (default: ./tiny11.iso or ./tiny11core.iso)
 --index N         Image index to use (skips the interactive prompt)
 --lang CODE       UI language override, e.g. en-US (default: autodetected)
 -y, --yes         Assume "yes" to prompts (non-interactive)
@@ -83,7 +95,7 @@ It will ask you to pick an edition **index** (e.g. Pro, Home), then build `tiny1
 Fully non-interactive example:
 
 ```bash
-./tiny11coremaker.sh --iso ~/iso/Win11.iso --index 6 --output ~/tiny11core.iso -y
+./tiny11maker.sh --iso ~/iso/Win11.iso --index 6 --output ~/tiny11.iso -y
 ```
 
 > `root` is **not** required. If FUSE mounting fails in your environment, ensure the `fuse` module is loaded and your user may use FUSE.
@@ -92,30 +104,24 @@ Fully non-interactive example:
 
 ## What it does
 
-Faithful to the upstream Core script:
+**Both builders** remove provisioned bloat apps (and de-provision them in the registry so they don't return for new users / on update), remove **Edge** and **OneDrive**, disable telemetry / sponsored apps / Copilot / the Chat icon, bypass the **TPM / Secure Boot / RAM / CPU / Storage** checks on both the install and setup images, enable **local-account OOBE** (`BypassNRO`) with the bundled `autounattend.xml`, delete telemetry scheduled tasks, and rebuild a bootable **BIOS + UEFI** ISO.
 
-- **Removes provisioned apps** (Clipchamp, Bing News/Weather, Xbox/Gaming, Get Help, Get Started, Office Hub, Solitaire, People, Power Automate, To Do, Alarms, Mail & Calendar, Feedback Hub, Maps, Sound Recorder, Your Phone, Zune Music/Video, Family, Quick Assist, Teams, Copilot, Outlook for Windows, …). Staged payloads are deleted and the packages are de-provisioned in the registry (so they don't return for new users / on update).
-- **Removes Edge** (Edge, EdgeUpdate, EdgeCore, the WinSxS WebView component, `Microsoft-Edge-Webview`) and its uninstall registry entries.
-- **Removes OneDrive** setup and disables OneDrive folder backup.
-- **Removes WinRE** (`winre.wim` replaced with an empty placeholder, as upstream does).
-- **Reduces WinSxS** to the architecture-specific essential runtime/servicing set — the largest space saving.
-- **Disables Windows Update** (services, policies, and post-OOBE `RunOnce` shutdown) and **Windows Defender** (services set to disabled, Security page hidden).
-- **Bypasses TPM / Secure Boot / RAM / CPU / Storage checks** on both the install image and the setup (boot) image.
-- **Disables telemetry**, sponsored/suggested apps, Copilot, the Chat icon, and consumer features.
-- **Enables local-account OOBE** (`BypassNRO`) and copies an `autounattend.xml` that hides the online-account screens and deploys with `/compact`.
-- **Deletes telemetry scheduled tasks** (Compatibility Appraiser, CEIP, ProgramDataUpdater, Chkdsk Proxy, Error Reporting QueueReporting).
-- **Re-exports** the install image as solid-compressed `install.esd` (the recovery-compression equivalent) and **rebuilds a bootable BIOS+UEFI ISO** with `xorriso`.
+`tiny11maker.sh` strips a larger app set (incl. Camera, Paint, Sticky Notes, OneNote, Skype, Terminal, 3D Viewer, Dolby) but **keeps Windows Update, Defender, WinRE, and the component store** — the image stays fully serviceable.
+
+`tiny11coremaker.sh` does everything above **plus**, for the smallest possible footprint: **reduces WinSxS** to the architecture-specific essential set, **removes WinRE**, **removes the WinSxS Edge WebView**, deletes isolated payloads of optional components (IE, Media Player, WordPad, etc.), and **disables Windows Update and Defender**. The result is **not serviceable**.
+
+Output: `tiny11maker.sh` ships a solid `install.wim`; `tiny11coremaker.sh` ships a solid `install.esd`.
 
 ---
 
 ## Known limitations vs. the Windows original
 
-These come from not having DISM's offline servicing engine on Linux. They're acceptable for the Core image's intended disposable-VM use, but be aware:
+These come from not having DISM's offline servicing engine on Linux:
 
-- **Not serviceable** (same as upstream Core, by design): no post-install Windows Update, features, or language packs. Turning Windows Update back on can break the system.
-- **Optional Windows packages** that upstream removes with `DISM /Remove-Package` (Internet Explorer, Media Player, WordPad, Tablet PC Math, Steps Recorder, legacy language Handwriting/OCR/Speech/TTS, Wallpaper FoD) are **not removed via the servicing stack**. This port deletes the safely-isolated payloads it can and disables Defender via the registry; the rest of those components are largely removed by the WinSxS reduction. Net result is comparable in size, but the package database still lists them.
-- **`.NET 3.5` enablement** (upstream's optional Core prompt) uses `DISM /enable-feature`, which has **no Linux equivalent** and is **not supported** here. (Rarely needed for a lightweight VM.)
-- **`DISM /Cleanup-Image /StartComponentCleanup /ResetBase`** has no `wimlib` equivalent; the WinSxS reduction plus the solid-ESD export cover the size reduction instead.
+- **Core is not serviceable** (by design, same as upstream Core): no post-install Windows Update, features, or language packs. `tiny11maker.sh` does **not** have this limitation.
+- **`DISM /Cleanup-Image /ResetBase`** (run by both upstream scripts for extra shrinkage) has no `wimlib` equivalent and is skipped. For maker the image is just slightly larger and stays serviceable; for Core the WinSxS reduction covers the size goal.
+- **Core's optional-package removal** (Internet Explorer, Media Player, WordPad, Tablet PC Math, Steps Recorder, legacy language Handwriting/OCR/Speech/TTS) is done by deleting the safely-isolated payloads rather than via the servicing stack; the rest is removed by the WinSxS reduction. Defender is disabled via the registry.
+- **`.NET 3.5` enablement** (upstream Core's optional prompt) uses `DISM /enable-feature`, which has **no Linux equivalent** and is **not supported** here.
 - **Language autodetection** is best-effort (defaults to `en-US`; override with `--lang`).
 
 ---
