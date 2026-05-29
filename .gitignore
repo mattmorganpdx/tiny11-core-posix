@@ -1,0 +1,5 @@
+tiny11core.iso
+*.iso
+scratchdir/
+tiny11/
+*.log
