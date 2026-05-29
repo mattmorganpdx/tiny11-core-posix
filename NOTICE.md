@@ -1,6 +1,6 @@
 # Attribution
 
-`tiny11-core-posix` is an **independent, from-scratch reimplementation** (in Bash,
+`tiny11-posix` is an **independent, from-scratch reimplementation** (in Bash,
 using Linux tooling) of the *Core* builder from the **tiny11builder** project.
 
 ## Original work

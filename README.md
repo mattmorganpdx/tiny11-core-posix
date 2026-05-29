@@ -1,4 +1,4 @@
-# tiny11-core-posix
+# tiny11-posix
 
 **A POSIX/Linux port of [tiny11builder](https://github.com/ntdevlabs/tiny11builder) — build a trimmed-down Windows 11 ISO without Windows, DISM, or Wine.**
 
@@ -67,8 +67,8 @@ sudo apt install wimtools libwin-hivex-perl libhivex-bin p7zip-full xorriso
 ## Usage
 
 ```bash
-git clone https://github.com/<your-user>/tiny11-core-posix.git
-cd tiny11-core-posix
+git clone https://github.com/mattmorganpdx/tiny11-posix.git
+cd tiny11-posix
 
 # Serviceable, debloated build (recommended for most uses):
 ./tiny11maker.sh --iso /path/to/Win11_24H2_English_x64.iso
